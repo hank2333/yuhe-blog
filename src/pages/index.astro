@@ -1,11 +1,125 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>赤赤的数字花园</title>
+    <meta
+      name="description"
+      content="记录学习、科研、工程实践，也记录一些还没有完全想明白的问题。"
+    />
+  </head>
+
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Personal Blog · Digital Garden</p>
+
+        <h1>牛子的数字花园</h1>
+
+        <p class="intro">
+          这里记录我的学习、科研、工程实践，也记录一些还没有完全想明白的问题。
+        </p>
+
+        <p>
+          它不是一个成果展示柜，更像是一间长期整理中的书房。 我会在这里写计算机科学、
+          人工智能、LLM Agent、强化学习、项目开发，也写大学生活、情绪、关系、电影、
+          游戏和成长。
+        </p>
+
+        <p>
+          有些文章会比较完整，有些只是阶段性的想法；有些内容偏技术，有些内容偏生活。
+          不指望任何人会把这些全都看完，但是爱我的人和想了解我的人可以从这里得到很多答案。
+        </p>
+
+		<p>
+			目前测试版，能找到这个网页算你看的仔细哈哈
+		</p>
+      </section>
+    </main>
+  </body>
+</html>
+
+<style>
+  :root {
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+    color: #1f2937;
+    background: #f7f3ea;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), transparent 32rem),
+      linear-gradient(135deg, #f7f3ea 0%, #efe4d0 100%);
+  }
+
+  .page {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 32px 20px;
+    box-sizing: border-box;
+  }
+
+  .hero {
+    max-width: 760px;
+    padding: 48px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 24px 80px rgba(87, 64, 39, 0.14);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+  }
+
+  .eyebrow {
+    margin: 0 0 16px;
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #9a6b36;
+    font-weight: 700;
+  }
+
+  h1 {
+    margin: 0 0 24px;
+    font-size: clamp(2.4rem, 7vw, 5rem);
+    line-height: 1;
+    letter-spacing: -0.06em;
+    color: #2f2418;
+  }
+
+  p {
+    font-size: 1.08rem;
+    line-height: 1.95;
+    margin: 0 0 18px;
+  }
+
+  .intro {
+    font-size: 1.32rem;
+    line-height: 1.8;
+    color: #5c4124;
+    font-weight: 600;
+  }
+
+  @media (max-width: 640px) {
+    .hero {
+      padding: 32px 24px;
+      border-radius: 22px;
+    }
+
+    p {
+      font-size: 1rem;
+      line-height: 1.85;
+    }
+
+    .intro {
+      font-size: 1.12rem;
+    }
+  }
+</style>
