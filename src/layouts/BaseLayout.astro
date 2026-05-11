@@ -1,0 +1,22 @@
+---
+import "../styles/global.css";
+
+const {
+  title = "牛子的数字花园",
+  description = "记录学习、科研、工程实践，也记录一些还没有完全想明白的问题。",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+
+  <body>
+    <slot />
+  </body>
+</html>
