@@ -206,3 +206,29 @@ p {
   color: #9a6b36;
   font-weight: 700;
 }
+.post-detail {
+  max-width: 820px;
+}
+
+.post-detail h1 {
+  font-size: clamp(2.1rem, 6vw, 4.4rem);
+}
+
+.post-detail p {
+  text-align: justify;
+}
+.post-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
+}
+
+.post-link:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 16px 48px rgba(87, 64, 39, 0.13);
+}
