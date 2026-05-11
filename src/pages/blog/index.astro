@@ -1,0 +1,62 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Blog | 赤赤的数字花园"
+  description="这里是所有文章、随笔、科研记录和项目复盘的目录。"
+>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Blog Archive</p>
+
+      <h1>文章目录</h1>
+
+      <p class="intro">
+        这里会整理我的技术笔记、科研记录、工程复盘和生活随笔。
+      </p>
+
+      <div class="category-grid">
+        <a class="category-card" href="/yuhe-blog/blog/research">
+          <p class="category-meta">Research Log</p>
+          <h2>科研记录</h2>
+          <p>
+            记录论文想法、实验复盘、导师反馈、研究方向判断，以及 RL + LLM 相关探索。
+          </p>
+        </a>
+
+        <a class="category-card" href="/yuhe-blog/blog/engineering">
+          <p class="category-meta">Engineering</p>
+          <h2>工程实践</h2>
+          <p>
+            记录 C++、n8n、本地 LLM、自动化工具、网站开发和各种项目踩坑。
+          </p>
+        </a>
+
+        <a class="category-card" href="/yuhe-blog/blog/essays">
+          <p class="category-meta">Essays</p>
+          <h2>随笔</h2>
+          <p>
+            写一些关于大学生活、成长、关系、情绪、孤独、自我观察和阶段性思考的文字。
+          </p>
+        </a>
+
+        <a class="category-card" href="/yuhe-blog/blog/media">
+          <p class="category-meta">Media</p>
+          <h2>观影、动漫、游戏与书</h2>
+          <p>
+            记录电影、动漫、游戏、书籍带来的想法，以及它们和现实生活之间的连接。
+          </p>
+        </a>
+
+        <a class="category-card" href="/yuhe-blog/blog/fragments">
+          <p class="category-meta">Fragments</p>
+          <h2>碎片想法</h2>
+          <p>
+            放一些还没有形成完整文章的短想法、灵感、句子、问题和半成品观点。
+          </p>
+        </a>
+      </div>
+    </section>
+  </main>
+</BaseLayout>
