@@ -166,16 +166,27 @@ FAIL`} lang="text" />
 
       <h2>编辑器红线也占了不少时间</h2>
       <p>
-        这次还有一个干扰：nvcc 已经能编译，VS Code 的 IntelliSense 却在 Kernel 启动位置报告
-        找不到 <code>__cudaPushCallConfiguration</code>，提示 Toolkit 可能损坏。
-        我们后来查到，本机相关头文件里的声明放在 <code>__CUDACC__</code> 条件下面，
-        又检查了编辑器配置里的编译器路径、包含目录和宏定义。
+        这次还有一个干扰：nvcc 已经能编译，VS Code 却在
+        <code>gemmNaive&lt;&lt;&lt;grid, block&gt;&gt;&gt;(...)</code> 的启动语法下面画红线。
+        把鼠标放上去，C/C++ IntelliSense 给出的诊断是：
+      </p>
+      <Code code={`C/C++(3118)
+找不到 __cudaPushCallConfiguration 声明。CUDA 工具包安装可能已损坏。`} lang="text" />
+      <p>
+        “工具包安装可能已损坏”这句话看着挺吓人，尤其是程序明明已经编译出来了。
+        最后我在 CSDN 上找到了处理方法：在 <code>.vscode/c_cpp_properties.json</code>
+        的 <code>defines</code> 数组里加上 <code>__CUDACC__</code>，供 IntelliSense 解析 CUDA 代码。
+        查本机头文件时也能看到，相关声明放在 <code>#ifdef __CUDACC__</code> 条件下面。
       </p>
       <p>
-        本地配置现在加了供 IntelliSense 使用的 <code>__CUDACC__</code>。
-        这只是针对当前环境的排查尝试，还没有足够记录确认它彻底解决了补全问题，
-        也不适合当成所有 CUDA 项目的通用配置照抄。
-        遇到类似问题，我会分别看编辑器诊断、实际编译输出和运行结果，先确定错误发生在哪一层。
+        又是 CSDN。平时搜东西会嫌它内容重复，真碰到这种具体得不能再具体的红线，
+        又能从里面翻出一个遇到过同样问题的人。神秘的程序员答案之书，
+        居然连我这个角落里的报错都有人写过。
+      </p>
+      <p>
+        这里记下的是我这次找到的方法，具体配置仍要结合自己的工具链。
+        遇到类似问题，我会分别看编辑器诊断、实际编译输出和运行结果，先确定错误发生在哪一层，
+        再决定要不要动安装环境。
       </p>
 
       <h2>下一步，再让线程合作搬数据</h2>
