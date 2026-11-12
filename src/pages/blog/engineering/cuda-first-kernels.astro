@@ -1,0 +1,246 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { Code } from "astro:components";
+
+const vectorIndex = `int i = blockIdx.x * blockDim.x + threadIdx.x;
+if (i < N) {
+    C[i] = A[i] + B[i];
+}`;
+
+const gemm = `// A: M × K, B: K × N, C: M × N，均为行主序。
+__global__ void gemmNaive(
+    const float* A, const float* B, float* C,
+    int M, int N, int K)
+{
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (row < M && col < N) {
+        float sum = 0.0f;
+        for (int k = 0; k < K; ++k) {
+            sum += A[row * K + k] * B[k * N + col];
+        }
+        C[row * N + col] = sum;
+    }
+}`;
+
+const launch = `dim3 block(16, 16);
+dim3 grid(
+    (N + block.x - 1) / block.x,
+    (M + block.y - 1) / block.y
+);
+gemmNaive<<<grid, block>>>(d_A, d_B, d_C, M, N, K);
+CUDA_CHECK(cudaGetLastError());
+CUDA_CHECK(cudaDeviceSynchronize());`;
+---
+
+<BaseLayout
+  title="从 Vector Add 到 GEMM：我的 CUDA 入门和一次边界排错 | 赤赤的数字花园"
+  description="记录 CUDA 入门中的 Vector Add、Reduction、Naive GEMM，以及一次由行列边界写反导致的 index 37 错误。"
+>
+  <main class="page">
+    <article class="hero post-detail">
+      <p class="eyebrow">Engineering · CUDA · C++</p>
+      <h1>从 Vector Add 到 GEMM：我的 CUDA 入门和一次边界排错</h1>
+      <p class="post-meta"><time datetime="2026-11-12">2026 年 11 月 12 日</time> · 阶段记录</p>
+
+      <p class="intro">
+        最近往 AI Infra 的方向学，开始在 Windows 上用 C++ 写一些 CUDA 练习。
+        到目前为止，最让我记住的一次运行结果是：Mismatch at index37。
+      </p>
+
+      <p>
+        我想把这段过程记下来。以后看模型推理、算子优化的时候，至少能想起一个矩阵元素怎样分配给线程，
+        数据放在哪里，以及自己曾经怎样把行数和列数写反。这里写的是入门过程，
+        还没有 Tiled GEMM 的实测加速结果。
+      </p>
+
+      <h2>从一个线程负责一个元素开始</h2>
+      <p>
+        第一份像样的练习是 Vector Add。CPU 上写一个循环，GPU 上让多个线程分别计算
+        <code>C[i] = A[i] + B[i]</code>。刚开始我需要反复看线程编号这一行：
+      </p>
+      <Code code={vectorIndex} lang="cpp" />
+      <p>
+        一个 Block 有一组线程，Grid 里有多个 Block。把 Block 编号乘以每个 Block 的线程数，
+        再加上线程在 Block 内的位置，就能找到它负责的元素。我的练习取了 1000 个元素，
+        每个 Block 放 256 个线程，向上取整启动 4 个 Block。这样一共有 1024 个线程，
+        最后 24 个线程要靠 <code>i &lt; N</code> 挡住。
+      </p>
+      <p>
+        这一版也让我走了一遍完整流程：在 CPU 准备输入，分配 GPU 内存，复制输入，启动 Kernel，
+        等待执行完成，把结果复制回来，逐个比较，最后释放内存。后来写 GEMM，外面的流程还是这些，
+        主要变化在 Kernel 如何分工。
+      </p>
+
+      <h2>Reduction 里，我卡在“这行代码是谁在执行”</h2>
+      <p>
+        接着看 Reduction，把多个数加成一个结果。我当时有一个疑问：Shared Memory 属于整个 Block，
+        那么后面的循环是不是也由整个 Block 只执行一次？
+        后来才把两件事分清：线程各自执行 Kernel；同一个 Block 的线程可以访问同一份 Shared Memory。
+        <a href="https://docs.nvidia.com/cuda/cuda-programming-guide/01-introduction/programming-model.html">CUDA 编程模型</a>
+        对线程协作和内存作用域的区分，正好对应这个问题。
+      </p>
+      <p>
+        以 8 个线程、每个线程先放入一个数的树形归约为例，第一轮让前 4 个线程把后半段加到前半段，
+        第二轮剩 2 个线程做加法，最后由 1 个线程得到 Block 的部分和。
+        这种简单写法要求 Block 大小为 2 的幂，并让越过输入末尾的位置填 0。
+        每轮的 <code>__syncthreads()</code> 要放在所有线程都会到达的位置，
+        不能只让当轮参与加法的线程执行。
+      </p>
+      <p>
+        我也开始理解，多 Block 的部分和还需要下一步合并。
+        普通 Block 内的同步不能拿来等待整个 Grid；可以先把各 Block 的结果写到 Global Memory，
+        再在同一 Stream 启动下一次 Kernel 继续归约。
+        本地的 Reduction 文件目前还是草稿，这部分主要记录我已经理清的执行过程。
+      </p>
+
+      <h2>GEMM：先给每个输出元素安排一个线程</h2>
+      <p>
+        矩阵乘法用到了前面两种思路：输出元素之间可以分别计算，而每个输出内部需要沿 K 维做点积。
+        对于 A（M × K）乘 B（K × N），结果 C 是 M × N。
+        我写的 Naive GEMM 让一个线程负责一个 C 的元素，在这个线程里循环累加 K 次。
+      </p>
+      <Code code={gemm} lang="cpp" />
+      <p>
+        三个数组偏移其实用的是同一个规则：行主序下，偏移等于“行号 × 当前矩阵的列数 + 列号”。
+        所以 A 用 <code>row * K + k</code>，B 用 <code>k * N + col</code>，
+        C 用 <code>row * N + col</code>。我现在更愿意先写下每个矩阵的形状，再推偏移，
+        避免光凭印象填 M、N、K。
+      </p>
+      <p>
+        启动时，x 方向对应列，y 方向对应行。16 × 16 的 Block 有 256 个线程，
+        Grid 的两个方向分别按 N 和 M 向上取整。下面沿用练习里的 <code>CUDA_CHECK</code> 宏，
+        它会检查 CUDA API 返回值，遇到错误就打印原因并退出。
+      </p>
+      <Code code={launch} lang="cpp" />
+      <p>
+        调试时我保留了启动后的错误检查和同步检查。Kernel 启动通常相对 CPU 异步执行，
+        只看启动那一行没有报错，还不足以判断执行过程正常。
+        <a href="https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#recommendations-and-best-practices">NVIDIA 的错误检查建议</a>
+        也要求检查 API 返回值和 Kernel 启动错误。
+      </p>
+
+      <h2>为什么第一个错误恰好在 index 37</h2>
+      <p>
+        那次测试用的是 M = 37、K = 23、N = 41。A 的输入取 <code>i % 7</code>，
+        B 的输入取 <code>i % 5</code>，先用 CPU 三重循环算参考结果。运行后得到：
+      </p>
+      <Code code={`Mismatch at index37:GPU=0,CPU=124
+Max error:124
+FAIL`} lang="text" />
+      <p>问题出在我当时把边界写成了：</p>
+      <Code code="if (col < M && row < N)" lang="cpp" />
+      <p>
+        C 有 37 行、41 列，正确条件应该是 <code>row &lt; M &amp;&amp; col &lt; N</code>。
+        错误条件要求列号小于 37，所以第一行走到第 37 列时，线程就跳过了计算。
+        这个位置的一维下标是 <code>0 * 41 + 37 = 37</code>，刚好对应输出里的第一个错误。
+        我此前把输出初始化为 0 并复制到 GPU，因此漏写的位置保留了 0；CPU 算出的参考值是 124。
+      </p>
+      <p>
+        另一边，错误条件又允许行号取到 37、38、39、40。在当时启动的 48 × 48 线程范围里，
+        这些线程会访问 A 和 C 的有效范围之外。一次运行打印出 FAIL，只记录了那次观察到的现象，
+        不能据此判断越界没有危害；其他运行也可能报告非法内存访问。
+      </p>
+      <p>
+        如果只测 M = N 的方阵，两种判断条件恰好一样，这个错误就藏住了。
+        37、23、41 这组尺寸既不相等，也不能被 16 整除，同时检查了行列对应和边缘 Block。
+        我后来改正了条件，本地版本又换成了 M = 128、K = 64、N = 256。
+        以后回归测试时，我仍然会保留那组不规则尺寸。
+      </p>
+
+      <h2>CPU 对照之外，还要检查什么</h2>
+      <p>
+        当时比较结果的循环遇到第一个错误就 break，所以打印的 Max error 只覆盖已经检查的那一段。
+        真要统计整个矩阵的最大误差，就要遍历完全部元素，把“记录误差”和“打印几个错误”分开。
+        换成一般浮点输入后，还要结合数值范围使用绝对与相对容差，并检查 NaN、Inf；
+        CPU 和 GPU 的运算顺序、融合乘加可能带来舍入差异。
+      </p>
+      <p>
+        逐元素比较能发现结果不对，内存工具能进一步定位非法访问。
+        <a href="https://docs.nvidia.com/compute-sanitizer/ComputeSanitizer/">Compute Sanitizer 文档</a>
+        说明了 memcheck 对越界和未对齐访问的检查方式。以后复查这类问题，可以在终端运行：
+      </p>
+      <Code code="compute-sanitizer --tool memcheck .\GEMM.exe" lang="powershell" />
+      <p>这里记录的是后续检查方法，没有把它写成这次已经通过的检查结果。</p>
+
+      <h2>编辑器红线也占了不少时间</h2>
+      <p>
+        这次还有一个干扰：nvcc 已经能编译，VS Code 的 IntelliSense 却在 Kernel 启动位置报告
+        找不到 <code>__cudaPushCallConfiguration</code>，提示 Toolkit 可能损坏。
+        我们后来查到，本机相关头文件里的声明放在 <code>__CUDACC__</code> 条件下面，
+        又检查了编辑器配置里的编译器路径、包含目录和宏定义。
+      </p>
+      <p>
+        本地配置现在加了供 IntelliSense 使用的 <code>__CUDACC__</code>。
+        这只是针对当前环境的排查尝试，还没有足够记录确认它彻底解决了补全问题，
+        也不适合当成所有 CUDA 项目的通用配置照抄。
+        遇到类似问题，我会分别看编辑器诊断、实际编译输出和运行结果，先确定错误发生在哪一层。
+      </p>
+
+      <h2>下一步，再让线程合作搬数据</h2>
+      <p>
+        Naive GEMM 里，计算相邻输出的线程会重复使用 A、B 的数据。
+        接下来准备做 Shared Memory Tiled GEMM：一个 Block 合作加载 A、B 的子块，
+        在 Block 内重复使用，然后继续加载 K 方向的下一块。
+        <a href="https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#shared-memory-in-matrix-multiplication-c-ab">官方矩阵乘法优化示例</a>
+        展示了这种数据复用方式。
+      </p>
+      <p>
+        我会先做 16 × 16 Tile，处理边缘补零，并保证加载完成后、覆盖下一轮数据前都有正确的同步。
+        再用相同输入对照 CPU 和 Naive 版本，预热后用 CUDA Events 重复测量 Kernel 时间，
+        把 CPU 与 GPU 之间的数据复制耗时另记。结果出来之前，我还不能说它能快多少。
+      </p>
+      <p>
+        学到这里，我开始能沿着一个输出元素追踪自己的程序：它对应哪个线程，读哪些地址，
+        在哪里累加，最后写到哪里。以后再看 PyTorch 的矩阵乘法和 Attention，
+        我希望能继续沿着这些具体问题往下问。眼下先把这几个练习写清楚，
+        下一次遇到 index 37 这样的报错，也就有地方回头查了。
+      </p>
+
+      <p class="back-link"><a href="/yuhe-blog/blog/engineering">返回工程实践目录</a></p>
+    </article>
+  </main>
+</BaseLayout>
+
+<style>
+  .post-detail {
+    min-width: 0;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .post-meta {
+    margin-bottom: 28px;
+  }
+
+  h2 {
+    margin: 36px 0 16px;
+    color: #2f2418;
+    line-height: 1.5;
+    font-size: 1.5rem;
+  }
+
+  a {
+    color: #795020;
+    text-underline-offset: 3px;
+  }
+
+  p code {
+    overflow-wrap: anywhere;
+    font-size: 0.9em;
+  }
+
+  :global(.post-detail pre) {
+    padding: 20px;
+    border-radius: 12px;
+    overflow-x: auto;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    margin: 0 0 24px;
+  }
+
+  .back-link {
+    margin-top: 36px;
+  }
+</style>
